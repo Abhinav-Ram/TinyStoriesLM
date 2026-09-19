@@ -1,20 +1,28 @@
-"""Stage 6: LLM-grade each model's completions with the Claude API, the way
-the TinyStories paper uses GPT-4 as a grader ("GPT-Eval"): for each
-completion, ask the grader to score grammar, creativity, plot, and
-consistency with the story beginning, on a 1-10 scale.
+"""Stage 6: LLM-grade each model's completions, the way the TinyStories
+paper uses GPT-4 as a grader ("GPT-Eval"): for each completion, ask the
+grader to score grammar, creativity, plot, and consistency with the story
+beginning, on a 1-10 scale.
 
-Requires the ANTHROPIC_API_KEY environment variable.
+Deviation from the paper: the paper uses GPT-4 (a cloud API). Per project
+preference, grading here runs entirely locally against an Ollama server
+(no cloud calls, no API key) using a locally-hosted open-weight model of
+your choice.
+
+Requires Ollama running locally (https://ollama.com) with the chosen model
+already pulled, e.g.:
+    ollama pull gemma3
 
 Usage:
-    python grade_completions.py --input results/generations.jsonl
+    python grade_completions.py --model gemma3
+    python grade_completions.py --model mistral
+    python grade_completions.py --model qwen3
 """
 import argparse
 import json
-import os
 import re
 import time
 
-import anthropic
+import requests
 
 RUBRIC_PROMPT = """You are grading a short story completion written by a small \
 language model that was shown only the beginning of a children's story and \
@@ -36,21 +44,26 @@ setting, tone, and events already established)?
 - plot: Does the completion develop a sensible, coherent continuation of the plot \
 (as opposed to rambling or looping)?
 
-Respond with ONLY a JSON object, no other text, in exactly this form:
+Respond with ONLY a JSON object, no other text, no reasoning, in exactly this form:
 {{"grammar": <int>, "creativity": <int>, "consistency": <int>, "plot": <int>}}
 """
 
 
-def grade_one(client, model, prompt, completion, max_retries=5):
+def grade_one(host, model, prompt, completion, max_retries=5, timeout=120):
     msg_text = RUBRIC_PROMPT.format(prompt=prompt, completion=completion or "(empty)")
+    payload = {
+        "model": model,
+        "prompt": msg_text,
+        "stream": False,
+        "think": False,          # ignored by models/versions that don't support it
+        "format": "json",
+        "options": {"temperature": 0, "num_predict": 200},
+    }
     for attempt in range(max_retries):
         try:
-            resp = client.messages.create(
-                model=model,
-                max_tokens=100,
-                messages=[{"role": "user", "content": msg_text}],
-            )
-            text = resp.content[0].text.strip()
+            resp = requests.post(f"{host}/api/generate", json=payload, timeout=timeout)
+            resp.raise_for_status()
+            text = resp.json()["response"].strip()
             match = re.search(r"\{.*\}", text, re.DOTALL)
             return json.loads(match.group(0))
         except Exception as e:
@@ -64,22 +77,35 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", type=str, default="results/generations.jsonl")
     ap.add_argument("--output", type=str, default="results/grades.jsonl")
-    ap.add_argument("--model", type=str, default="claude-sonnet-5")
+    ap.add_argument("--model", type=str, default="gemma3",
+                     choices=["gemma3", "mistral", "qwen3"],
+                     help="Ollama model to use as the grader (must already be pulled)")
+    ap.add_argument("--host", type=str, default="http://localhost:11434",
+                     help="Ollama server URL")
     args = ap.parse_args()
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise SystemExit("ANTHROPIC_API_KEY is not set.")
-
-    client = anthropic.Anthropic()
+    try:
+        r = requests.get(f"{args.host}/api/tags", timeout=5)
+        r.raise_for_status()
+        available = [m["name"].split(":")[0] for m in r.json().get("models", [])]
+        if args.model not in available:
+            raise SystemExit(
+                f"Model '{args.model}' not found in Ollama (available: {available}). "
+                f"Run `ollama pull {args.model}` first."
+            )
+    except requests.exceptions.ConnectionError:
+        raise SystemExit(
+            f"Could not reach Ollama at {args.host}. Is it running? (`ollama serve`)"
+        )
 
     with open(args.input) as f:
         rows = [json.loads(l) for l in f]
 
-    print(f"Grading {len(rows)} completions with {args.model}...")
+    print(f"Grading {len(rows)} completions locally with Ollama model '{args.model}'...")
     results = []
     for i, row in enumerate(rows):
-        scores = grade_one(client, args.model, row["prompt"], row["completion"])
-        out = {**row, **scores}
+        scores = grade_one(args.host, args.model, row["prompt"], row["completion"])
+        out = {**row, "grader": args.model, **scores}
         results.append(out)
         print(f"  [{i+1}/{len(rows)}] {row['config']} prompt#{row['prompt_id']}: {scores}")
 

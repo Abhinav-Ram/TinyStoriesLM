@@ -3,4 +3,4 @@ numpy
 tqdm
 tokenizers>=0.15
 datasets>=2.18
-anthropic>=0.40
+requests

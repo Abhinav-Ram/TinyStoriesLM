@@ -24,7 +24,7 @@ requires a deviation), here's what we picked and why:
 | Context length | 512 (some small models use 256) | 256 |
 | Optimizer/schedule | Not fully specified | AdamW (β=(0.9, 0.95), weight decay 0.1), linear warmup + cosine decay, grad-norm clipping at 1.0 |
 | Dataset | Full TinyStories (~2.1M stories) | A random subset (see command below) so training finishes in minutes on CPU |
-| Evaluation | GPT-4 grades generated completions on grammar, creativity, consistency (paper also discusses plot); validation loss/perplexity also reported | Claude grades completions on grammar, creativity, consistency, and plot (1–10 each); validation perplexity also reported |
+| Evaluation | GPT-4 (a cloud API) grades generated completions on grammar, creativity, consistency (paper also discusses plot); validation loss/perplexity also reported | A locally-hosted open-weight model served via [Ollama](https://ollama.com) — your choice of `gemma3`, `mistral`, or `qwen3` — grades completions on grammar, creativity, consistency, and plot (1–10 each), entirely on your own machine, no cloud API or key required; validation perplexity also reported |
 | Seed | Not specified | Fixed at 1337 everywhere |
 
 ## Setup (macOS)
@@ -48,11 +48,17 @@ they'll automatically use the GPU and train notably faster than the
 CPU-only numbers this repo was originally benchmarked on. No code changes
 needed — it's automatic.
 
-Before stage 7 (grading), export your Claude API key:
+Stage 7 (grading) needs [Ollama](https://ollama.com) installed and running
+locally, with at least one of the grading models pulled:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+brew install ollama        # or download from ollama.com
+ollama serve &              # if not already running as a background service
+ollama pull gemma3          # and/or: ollama pull mistral / ollama pull qwen3
 ```
+
+No API key, no cloud calls — grading runs entirely against your local
+Ollama server.
 
 ## Pipeline — one command per stage
 
@@ -81,8 +87,8 @@ python evaluate_perplexity.py --config medium
 # 6. Generate completions from held-out cut-off story beginnings
 python generate_completions.py --configs tiny small medium
 
-# 7. Grade completions with Claude (requires ANTHROPIC_API_KEY)
-python grade_completions.py
+# 7. Grade completions locally with Ollama (pick one: gemma3 / mistral / qwen3)
+python grade_completions.py --model gemma3
 
 # 8. Aggregate everything into a results table
 python summarize_results.py
@@ -106,6 +112,10 @@ training loss decreases before scaling up to the real runs.
   local/global alternation.
 - **Tokenizer**: a from-scratch small BPE tokenizer instead of a restricted
   GPT-Neo tokenizer.
-- **Grader**: Claude instead of GPT-4, and completions are generated once per
-  prompt (temperature 0.8) rather than averaged over 10 samples per prompt as
-  in the paper, to keep the number of API calls small.
+- **Grader**: a locally-hosted open-weight model (Gemma 3 / Mistral / Qwen3,
+  served via Ollama) instead of GPT-4, by choice — this keeps the whole
+  pipeline local with no cloud API calls or cost, but these models are much
+  smaller and less reliable graders than GPT-4, so treat the grading scores
+  as a rough signal rather than a precise measurement. Completions are also
+  generated once per prompt (temperature 0.8) rather than averaged over 10
+  samples per prompt as in the paper, to keep grading fast.
