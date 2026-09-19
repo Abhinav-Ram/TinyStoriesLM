@@ -1,0 +1,6 @@
+torch>=2.2
+numpy
+tqdm
+tokenizers>=0.15
+datasets>=2.18
+anthropic>=0.40
