@@ -9,7 +9,7 @@ import math
 import torch
 
 from configs import PRESETS
-from dataset import BinDataset
+from dataset import BinDataset, pick_device
 from model import GPT
 
 
@@ -21,10 +21,11 @@ def main():
     ap.add_argument("--batch_size", type=int, default=64)
     args = ap.parse_args()
 
+    device = pick_device()
     ckpt = torch.load(f"{args.run_dir}/{args.config}/checkpoint.pt", map_location="cpu")
     from configs import GPTConfig
     config = GPTConfig(**ckpt["config"])
-    model = GPT(config)
+    model = GPT(config).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
 
@@ -35,7 +36,7 @@ def main():
     losses = []
     with torch.no_grad():
         for _ in range(n_eval):
-            x, y = val_ds.get_batch(args.batch_size)
+            x, y = val_ds.get_batch(args.batch_size, device)
             _, loss = model(x, y)
             losses.append(loss.item())
 

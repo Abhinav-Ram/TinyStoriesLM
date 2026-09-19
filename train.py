@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from configs import PRESETS
-from dataset import BinDataset, load_tokenizer
+from dataset import BinDataset, load_tokenizer, pick_device
 from model import GPT
 
 
@@ -59,6 +59,8 @@ def main():
 
     set_seed(args.seed)
     torch.set_num_threads(os.cpu_count() or 4)
+    device = pick_device()
+    print(f"Using device: {device}")
 
     tok = load_tokenizer(args.tokenizer_dir)
     vocab_size = tok.get_vocab_size()
@@ -67,7 +69,7 @@ def main():
     config.block_size = args.block_size
     config.vocab_size = vocab_size
 
-    model = GPT(config)
+    model = GPT(config).to(device)
     n_params = model.num_params()
     n_params_ne = model.num_params(non_embedding=True)
     print(f"[{args.config}] total params: {n_params:,} | non-embedding params: {n_params_ne:,}")
@@ -87,7 +89,7 @@ def main():
         model.eval()
         losses = []
         for _ in range(iters):
-            x, y = ds.get_batch(args.batch_size)
+            x, y = ds.get_batch(args.batch_size, device)
             _, loss = model(x, y)
             losses.append(loss.item())
         model.train()
@@ -100,7 +102,7 @@ def main():
         for g in optimizer.param_groups:
             g["lr"] = lr
 
-        x, y = train_ds.get_batch(args.batch_size)
+        x, y = train_ds.get_batch(args.batch_size, device)
         _, loss = model(x, y)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -122,7 +124,7 @@ def main():
     log_f.close()
 
     ckpt = {
-        "model_state": model.state_dict(),
+        "model_state": {k: v.cpu() for k, v in model.state_dict().items()},
         "config": vars(config),
         "n_params": n_params,
         "n_params_non_embedding": n_params_ne,

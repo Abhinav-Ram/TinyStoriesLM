@@ -9,6 +9,14 @@ import torch
 from tokenizers import ByteLevelBPETokenizer
 
 
+def pick_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def load_tokenizer(tokenizer_dir="tokenizer"):
     return ByteLevelBPETokenizer(
         f"{tokenizer_dir}/vocab.json", f"{tokenizer_dir}/merges.txt"

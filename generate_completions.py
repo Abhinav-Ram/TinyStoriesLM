@@ -10,7 +10,7 @@ import json
 import torch
 
 from configs import GPTConfig, PRESETS
-from dataset import load_tokenizer
+from dataset import load_tokenizer, pick_device
 from model import GPT
 
 
@@ -28,6 +28,7 @@ def main():
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
+    device = pick_device()
     tok = load_tokenizer(args.tokenizer_dir)
 
     with open(args.prompts_file) as f:
@@ -40,14 +41,14 @@ def main():
     for cfg_name in args.configs:
         ckpt = torch.load(f"{args.run_dir}/{cfg_name}/checkpoint.pt", map_location="cpu")
         config = GPTConfig(**ckpt["config"])
-        model = GPT(config)
+        model = GPT(config).to(device)
         model.load_state_dict(ckpt["model_state"])
         model.eval()
 
         print(f"Generating with [{cfg_name}]...")
         for p in prompts:
             ids = tok.encode(p["prompt"]).ids
-            x = torch.tensor([ids], dtype=torch.long)
+            x = torch.tensor([ids], dtype=torch.long, device=device)
             with torch.no_grad():
                 out = model.generate(x, args.max_new_tokens, temperature=args.temperature, top_k=args.top_k)
             completion_ids = out[0, len(ids):].tolist()

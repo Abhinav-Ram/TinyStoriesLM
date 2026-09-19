@@ -27,6 +27,33 @@ requires a deviation), here's what we picked and why:
 | Evaluation | GPT-4 grades generated completions on grammar, creativity, consistency (paper also discusses plot); validation loss/perplexity also reported | Claude grades completions on grammar, creativity, consistency, and plot (1–10 each); validation perplexity also reported |
 | Seed | Not specified | Fixed at 1337 everywhere |
 
+## Setup (macOS)
+
+Tested on a MacBook Pro (Apple Silicon or Intel):
+
+```bash
+git clone https://github.com/Abhinav-Ram/TinyStoriesLM
+cd TinyStoriesLM
+git checkout claude/sleepy-mccarthy-5oylps   # or main, once merged
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+No special install flags needed — the `torch` wheel from PyPI ships with
+Apple Silicon (arm64) support and the MPS GPU backend built in. All three
+training/eval scripts auto-detect the best available device via
+`pick_device()` in `dataset.py` (CUDA > MPS > CPU), so on an M-series Mac
+they'll automatically use the GPU and train notably faster than the
+CPU-only numbers this repo was originally benchmarked on. No code changes
+needed — it's automatic.
+
+Before stage 7 (grading), export your Claude API key:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
 ## Pipeline — one command per stage
 
 ```bash
