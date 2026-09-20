@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+data/*.txt
+data/*.bin
+data/holdout_prompts.jsonl
+tokenizer/vocab.json
+tokenizer/merges.txt
+runs/
+results/generations.jsonl
+results/grades.jsonl
